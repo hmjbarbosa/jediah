@@ -4,4 +4,6 @@ __pycache__/
 *~
 .vscode
 *.zip
+ceilometer
+lidarpy_old
 
