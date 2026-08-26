@@ -14,6 +14,9 @@ from lidarpy.inversion import Klett
 from lidarpy.molecular import AlphaBetaMolecular
 import matplotlib.dates as mdates
 
+showplots = True
+if showplots: 
+    plt.ion()
 
 def _find_aeronet_header_line(filepath):
 
@@ -195,6 +198,7 @@ def run_hourly_klett_inversion(*, lidar, df_mol, myzref, lr_target=-1, tau_targe
         print(f"[warn] Ref band [{ref_min},{ref_max}] has <10 bins on this grid. Will still try per-hour checks.")
 
     for hour in range(24):
+    #for hour in range(0):
         base_day = pd.to_datetime(str(lidar.time[0].values)).normalize()
         print(f"\n=== Hour {hour:02d} Day {base_day.strftime('%Y-%m-%d')} ===")
         print(" len(hour[coef_slope])", len(hourly["coef_slope"]))
@@ -383,7 +387,8 @@ def run_hourly_klett_inversion(*, lidar, df_mol, myzref, lr_target=-1, tau_targe
             plt.grid(True)
             plt.legend()
             # save fig with hour and day in the name in a folder
-            plt.savefig(f"P_P_mol_plots/PxP_mol_fit_hour_{hour:02d}_day_{base_day.strftime('%Y%m%d')}.png")
+            if not showplots:
+                plt.savefig(f"P_P_mol_plots/PxP_mol_fit_hour_{hour:02d}_day_{base_day.strftime('%Y%m%d')}.png")
 
 
     print(" AFTER all 24hours")
@@ -406,7 +411,8 @@ def run_hourly_klett_inversion(*, lidar, df_mol, myzref, lr_target=-1, tau_targe
     plt.grid()
     cb = plt.colorbar()
     cb.set_label('beta_raw')
-    plt.savefig(f"P_P_mol_plots/curtain_plot_day_{base_day.strftime('%Y%m%d')}.png")
+    if not showplots:
+        plt.savefig(f"P_P_mol_plots/curtain_plot_day_{base_day.strftime('%Y%m%d')}.png")
     print(" len(hour[coef_slope])", len(hourly["coef_slope"]), hourly["coef_slope"])
 
     if len(hourly["time"]) == 0:
@@ -414,6 +420,9 @@ def run_hourly_klett_inversion(*, lidar, df_mol, myzref, lr_target=-1, tau_targe
         return None
 
     print("coef_slope=",hourly["coef_slope"], " len(coef_slope)=", len(hourly["coef_slope"]))
+    #print(hourly)
+    print(type(hourly["coef_slope"]))
+    print(type(hourly["n_profiles"]))
     
     ds = xr.Dataset(
         data_vars={
@@ -427,15 +436,16 @@ def run_hourly_klett_inversion(*, lidar, df_mol, myzref, lr_target=-1, tau_targe
             "fixed_lr": ("time", np.array(hourly["fixed_lr"])),
             "n_good_profiles": ("time", np.array(hourly["n_good_profiles"])),
             "n_profiles": ("time", np.array(hourly["n_profiles"])), 
-            #"coef_slope": (("time", "parameter"), np.array(hourly["coef_slope"])), # nneves: Use this if storing 'a' and 'b'
-            "coef_slope": ("time", np.array(hourly["coef_slope"]).squeeze()), # nneves: Use this if storing just 'a' for coef_slope
+            "coef_slope": (("time", "parameter"), np.array(hourly["coef_slope"])), 
         },
         coords={
             "time": np.array(hourly["time"]),
             "range": rng,
-           # "parameter": ["a", "b"] 
+            "parameter": ["a"]
         }
     )
+    #"coef_slope": (("time", "parameter"), np.array(hourly["coef_slope"])), # nneves: Use this if storing 'a' and 'b'
+    # "parameter": ["a", "b"] 
     return ds
 
 
@@ -504,8 +514,10 @@ def plot_aeronet_overview(df_aod, start_date, end_date, title="AERONET AOD (loca
     plt.title(title)
     plt.grid(True)
     plt.tight_layout()
-    #plt.show()
-    plt.savefig("AERONET_AOD_overview.png")
+    if showplots:
+        plt.show()
+    else:
+        plt.savefig("AERONET_AOD_overview.png")
 
 def plot_alpha_profiles(ds_out, max_range_m=8000, label="annual"):
 
@@ -528,8 +540,10 @@ def plot_alpha_profiles(ds_out, max_range_m=8000, label="annual"):
     plt.grid(True)
     plt.legend(title="Hour", fontsize=8)
     plt.tight_layout()
-    #plt.show()
-    plt.savefig("alpha_profiles.png")
+    if showplots:
+        plt.show()
+    else:
+        plt.savefig("alpha_profiles.png")
 
 def list_monthly_zip_files(zip_dir):
 
@@ -541,7 +555,7 @@ def list_monthly_zip_files(zip_dir):
 
 if __name__ == "__main__":
     BASE = r"/storage/jediah"
-    BASE_CEILO = os.path.join(BASE, "ceilo_zip_only")
+    BASE_CEILO = os.path.join(BASE, "ceilometer")
     OUT_BASE = os.path.join(BASE, "output")
 
     ANNUAL_CLIMO   = os.path.join(BASE, "sonde", "annual_avg.nc")     # dims: height
@@ -587,7 +601,8 @@ if __name__ == "__main__":
     # load climotologies
     ds_sonde_annual   = xr.load_dataset(ANNUAL_CLIMO) # change to file of the specific day of the inversion
  
-    zip_files = list_monthly_zip_files(BASE_CEILO)
+    #zip_files = list_monthly_zip_files(BASE_CEILO)
+    zip_files = [BASE_CEILO + '/201703_EMBRAPA_CHM160147.nc.zip']
 
     print("\n==============")
     print("[info] Found monthly zip files:", len(zip_files))
@@ -615,31 +630,45 @@ if __name__ == "__main__":
         
         #idx = 0
         for member_name, tmp_path in iter_netcdf_members_in_zip(ZIP_PATH):
+            print("=====================================================================================================")
         #    if idx >= 5:
         #        break
         #    else:
         #        idx += 1
 
             ds_lidar = None
-            try:
-                print("Day file:", member_name)
-                ds_lidar = xr.open_dataset(tmp_path, engine="netcdf4")
-                print("    Start time:", ds_lidar.time.values[0])
-                print("    End time:", ds_lidar.time.values[-1])
+            # 26-AUG-2026 - WE SHOULD NOT NEED A TRY: TO DO THE LIDAR ANALYSIS.
+            # ALL THE POSSIBLE ERRORS SHOULD BE HANDLED INSIDE THE LIDAR ANALYSIS FUNCTION.
+            #try:
+            print("-------------------- TRY ")
+            print("Day file:", member_name)
+            ds_lidar = xr.open_dataset(tmp_path, engine="netcdf4")
+            print("    Start time:", ds_lidar.time.values[0])
+            print("    End time:", ds_lidar.time.values[-1])
 
-                output_annual = lidar_analysis(ds_lidar, ds_sonde_annual, PARAM)
+            output_annual = lidar_analysis(ds_lidar, ds_sonde_annual, PARAM)
 
-                if output_annual is not None and output_annual.sizes.get("time", 0) > 0:
-                    monthly_outputs.append(output_annual)
+            if (output_annual is not None) and (output_annual.sizes.get("time", 0) > 0):
+                monthly_outputs.append(output_annual)
 
-            except Exception as e:
-                print("[ERROR] failed on", member_name, "->", repr(e))
-                continue
-            finally:
-                if ds_lidar is not None:
-                    ds_lidar.close()
-                if os.path.exists(tmp_path):
-                    os.remove(tmp_path)
+            # except Exception as e:
+            #     print("-------------------- EXCEPT ")
+            #     print("[ERROR] failed on", member_name, "->", repr(e))
+            #     continue
+            # finally:
+            #     print("-------------------- FINALLY ")
+            #     if ds_lidar is not None:
+            #         ds_lidar.close()
+            #     if os.path.exists(tmp_path):
+            #         os.remove(tmp_path)
+
+            # DEBUG STOP AFTER DAY 2
+            print("-------------------- DEBUG STOP AFTER DAY 2 ")
+            if member_name =="20170302_EMBRAPA_CHM160147_000.nc":
+                print("-------------------- EXIT AFTER DAY 2 ")
+                break
+            else:
+                print("--------------------     NOT MARCH-2ND 2017    <<<<< =====================")
 
         # After this zip: concat + save +  plot
         if len(monthly_outputs) == 0:
