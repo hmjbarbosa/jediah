@@ -17,6 +17,7 @@ import matplotlib.dates as mdates
 showplots = True
 if showplots: 
     plt.ion()
+    
 
 def _find_aeronet_header_line(filepath):
 
@@ -141,6 +142,10 @@ def build_molecular(*,sonde_pres_hPa, sonde_temp_C, sonde_height_m,
 def run_klett_constrained_by_aod(signal_processed, rangebin, df_mol, myzref, tau_target, zenith_deg):
 
     # Binary search the lidar ratio so that the integrated extinction matches tau_target.
+
+    #HMJB. sep 4th 2026 ---  this function is incorretly calling the .fit() 
+    # for the AOD comparison, we cannot integrate the extinction starting from the ground because of the overlap. 
+    # NEED to check new parameter in .fit(), hmin_aod, to make extinction constant in the bottom 200m. 
 
     LR1, LR2 = 5.0, 150.0
     TAU1 = Klett(signal=signal_processed, rangebin=rangebin,
@@ -297,6 +302,7 @@ def run_hourly_klett_inversion(*, lidar, df_mol, myzref, lr_target=-1, tau_targe
             )
 
             alpha_aer, beta_aer, TAU, coef_slope = tmp.fit()
+            p_mol = tmp.get_model_mol()  # nn: attempt to get the molecular signal for plotting
 
             used_lr = lr_target
             fixed_lr = 1
@@ -375,12 +381,12 @@ def run_hourly_klett_inversion(*, lidar, df_mol, myzref, lr_target=-1, tau_targe
         # only plot if there's a coeficient (i.e. if the hour was processed)
         if coef_slope is not None:
             plt.figure(figsize=(10, 6))
-            plt.plot(df_mol.beta.data[ref_mask], sig_arr[ref_mask], marker=" ", linestyle="-", color="blue", label="Data points", markersize=5)
+            plt.plot(p_mol[ref_mask], sig_arr[ref_mask], marker=" ", linestyle="-", color="blue", label="Data points", markersize=5)
             # Add fitting line
-            fit_line = coef_slope[0] * df_mol.beta.data[ref_mask]
+            fit_line = coef_slope[0] * p_mol[ref_mask]
             # plot the fitting line on the same plot, with a dashed line 
-            # I'm probably plotting the wrong molecular signal?
-            plt.plot(df_mol.beta.data[ref_mask], fit_line, label="Fitting line", color="green", linestyle="--")
+            # nno: now I used the molecular SIGNAL P_mol and got something more reasonable for the fit, I was using beta_mol before, which is not the same as the molecular signal P_mol
+            plt.plot(p_mol[ref_mask], fit_line, label="Fitting line", color="green", linestyle="--")
             plt.xlabel("Molecular Signal Backscatter (P_mol)")
             plt.ylabel("Real Signal Backscatter (P)")
             plt.title(f"Hour {hour:02d} - Coef Slope: {coef_slope[0]:.2e}, day: {base_day.strftime('%Y-%m-%d')} with fitting line y = ax")
@@ -576,8 +582,8 @@ if __name__ == "__main__":
 
     # Reference region for calibration
     PARAM = {
-        "REF_MIN": 6000,
-        "REF_MAX": 14000,
+        "REF_MIN": 6000, #nno lowered the altitudes for testing
+        "REF_MAX": 9000,
         # Fixed lidar ratio vs AOD-constrained:
         #  - set LR_TARGET > 0 and TAU_TARGET < 0 for fixed LR
         #  - set LR_TARGET < 0 and TAU_TARGET > 0 for AOD-constrained path 
@@ -602,7 +608,7 @@ if __name__ == "__main__":
     ds_sonde_annual   = xr.load_dataset(ANNUAL_CLIMO) # change to file of the specific day of the inversion
  
     #zip_files = list_monthly_zip_files(BASE_CEILO)
-    zip_files = [BASE_CEILO + '/201703_EMBRAPA_CHM160147.nc.zip']
+    zip_files = [BASE_CEILO + '/201611_EMBRAPA_CHM160147.nc.zip']
 
     print("\n==============")
     print("[info] Found monthly zip files:", len(zip_files))
@@ -664,11 +670,11 @@ if __name__ == "__main__":
 
             # DEBUG STOP AFTER DAY 2
             print("-------------------- DEBUG STOP AFTER DAY 2 ")
-            if member_name =="20170302_EMBRAPA_CHM160147_000.nc":
+            if member_name =="20161102_EMBRAPA_CHM160147_000.nc":
                 print("-------------------- EXIT AFTER DAY 2 ")
                 break
             else:
-                print("--------------------     NOT MARCH-2ND 2017    <<<<< =====================")
+                print("--------------------     NOT AUG-2ND 2017    <<<<< =====================")
 
         # After this zip: concat + save +  plot
         if len(monthly_outputs) == 0:
@@ -685,5 +691,4 @@ if __name__ == "__main__":
         end_date   = pd.to_datetime(ds_month.time.max().values).normalize()
         plot_aeronet_overview(df_aod, start_date, end_date, title=f"AERONET AOD {yyyymm} (local)")
         plot_alpha_profiles(ds_month, max_range_m=PARAM["PLOT_MAX_RANGE"], label=yyyymm)
-
     print("\nAll done for", len(zip_files), "monthly zips.")
