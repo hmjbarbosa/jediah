@@ -14,7 +14,17 @@ from lidarpy.inversion import Klett
 from lidarpy.molecular import AlphaBetaMolecular
 import matplotlib.dates as mdates
 
-showplots = True
+# 9/4/2026
+# Try to run for more days. Maybe a year. See if all the figures work
+# Use aod instead of the lidar ratio
+# Ref region is now 6000-9000 km
+# Run this for 10 different days from 2017 and put it on the slideshow
+
+# 9/14/2026
+# Line 584: Set LR target to -1 and set tau target to 0.261 (AERONET AOD) to run the AOD constrained inversion
+
+
+showplots = False
 if showplots: 
     plt.ion()
     
@@ -394,7 +404,8 @@ def run_hourly_klett_inversion(*, lidar, df_mol, myzref, lr_target=-1, tau_targe
             plt.legend()
             # save fig with hour and day in the name in a folder
             if not showplots:
-                plt.savefig(f"P_P_mol_plots/PxP_mol_fit_hour_{hour:02d}_day_{base_day.strftime('%Y%m%d')}.png")
+                print('not saving calib plots')
+                #plt.savefig(f"P_P_mol_plots/PxP_mol_fit_hour_{hour:02d}_day_{base_day.strftime('%Y%m%d')}.png")
 
 
     print(" AFTER all 24hours")
@@ -587,9 +598,9 @@ if __name__ == "__main__":
         # Fixed lidar ratio vs AOD-constrained:
         #  - set LR_TARGET > 0 and TAU_TARGET < 0 for fixed LR
         #  - set LR_TARGET < 0 and TAU_TARGET > 0 for AOD-constrained path 
-        "LR_TARGET": 50,
+        "LR_TARGET": -1,
         #"TAU_TARGET": 0.261,   # keep <0 to use fixed LR path for now
-        "TAU_TARGET": -1, 
+        "TAU_TARGET": 0.261, 
         # Lidar geometry at EMBRAPA
         "GROUND_M": 100.0,
         "ZENITH_DEG": 25.0,
@@ -608,7 +619,7 @@ if __name__ == "__main__":
     ds_sonde_annual   = xr.load_dataset(ANNUAL_CLIMO) # change to file of the specific day of the inversion
  
     #zip_files = list_monthly_zip_files(BASE_CEILO)
-    zip_files = [BASE_CEILO + '/201611_EMBRAPA_CHM160147.nc.zip']
+    zip_files = [BASE_CEILO + '/201611_EMBRAPA_CHM160147.nc.zip'] # change monthly file
 
     print("\n==============")
     print("[info] Found monthly zip files:", len(zip_files))
@@ -670,11 +681,11 @@ if __name__ == "__main__":
 
             # DEBUG STOP AFTER DAY 2
             print("-------------------- DEBUG STOP AFTER DAY 2 ")
-            if member_name =="20161102_EMBRAPA_CHM160147_000.nc":
+            if member_name =="20161102_EMBRAPA_CHM160147_000.nc": # change daily file
                 print("-------------------- EXIT AFTER DAY 2 ")
                 break
             else:
-                print("--------------------     NOT AUG-2ND 2017    <<<<< =====================")
+                print("--------------------     NOT NOV-2ND 2016    <<<<< =====================")
 
         # After this zip: concat + save +  plot
         if len(monthly_outputs) == 0:
