@@ -263,23 +263,38 @@ def run_hourly_klett_inversion(*, lidar, df_mol, myzref, lr_target=None, tau_tar
             continue
 
         # Avoid hours where the averaged signal is basically zero everywhere
+        #hmjb: 2026-sep-23 I don't think this can ever be triggered because it requires the
+        # signal to be ==0 everywhere
         if np.nanmax(np.abs(sig_arr)) <= 0:
             print(f"[warn] Hour {hour:02d}: signal is all zeros; skipping.")
             continue
 
         # Reference-region check
         ref_mask = (rng >= ref_min) & (rng <= ref_max)
-        if ref_mask.sum() < 10:
-            continue
+        #hmjb: commented out on 2026-sep-23
+        #if ref_mask.sum() < 10:
+        #    continue
 
         ref_vals = sig_arr[ref_mask]
         ref_vals = ref_vals[np.isfinite(ref_vals)]
+        print(f"[info] Hour {hour:02d}: {len(ref_vals)} finite bins in ref region [{ref_min},{ref_max}] m.")
 
         if ref_vals.size < 10:
             print(f"[warn] Hour {hour:02d}: too few finite ref bins; skipping.")
             continue
 
         # require the reference region to be mostly positive
+        #HMJB: 2026-sep-23 Jediah and I found cases (2016-12-01 from 10UTC to 12UTC)
+        # where the ceilometer background correction seems to be wrong. The signal
+        # decreases with altitude, and become totally negative. Like as if the removed BG
+        # was too high. Need to investigate this further. 
+        # Will we have to check the BG removal that is "automated" in this instrument?!?
+
+        ## TO TRY: REMOVE THIS CHECK, SO THAT THE INVERSION PROCEEDS. 
+        ## BUT MODIFY THE MOLECULAR FIT TO USE 2 PARAMETERS A*X + B
+        ### YOU WILL NEED TO DOUBLE-CHECK THAT WE ARE USING THE "B" TO CORRECT THE SIGNAL BACKGROUND. 
+        ### FOR THE CASES WHERE THE SIGNAL IS NEGATIVE, B WILL BE NEGATIVE... WHICH MEANS THAT
+        #### CORRECTED SIGNAL = SIGNAL - B => THIS WILL INCREASE THE SIGNAL, HENCE, IT BECOMES POSITIVE. 
         pos_frac = np.mean(ref_vals > 0) #Fraction of bins in the reference region where the signal is positive
         if pos_frac < 0.7:
             print(f"[warn] Hour {hour:02d}: ref region mostly non-positive (pos_frac={pos_frac:.2f}); skipping.")
@@ -296,7 +311,11 @@ def run_hourly_klett_inversion(*, lidar, df_mol, myzref, lr_target=None, tau_tar
         # Require both signal and model to be finite in the reference band
         ok_ref = ref_mask & np.isfinite(sig_arr) & np.isfinite(model_beta)
         if ok_ref.sum() < 10:
+            print(f"[warn] Hour {hour:02d}: not enough finite bins in ref region after model check; skipping.")
             continue
+
+        # passed all the tests, now we can do the inversion
+        print(f"[info] Hour {hour:02d}: {no_clouds_mask.sum().item()} clear profiles, {ok_ref.sum()} finite bins in ref region; proceeding with inversion.")
 
         # Inversion (nneves: now it also stores the calibration coefficient coef_slope for each hour, we can check if it is stable across hours)
         if lr_target > 0:
@@ -345,6 +364,12 @@ def run_hourly_klett_inversion(*, lidar, df_mol, myzref, lr_target=None, tau_tar
 
                 # Use the mean AOD as tau_target_1h (vertical AOD)
                 tau_target_1h = aod_this_hour.mean()
+                # sanity check
+                if tau_target_1h < 0: 
+                    print(f"[warn] Hour {hour:02d}: mean AERONET AOD is negative ({tau_target_1h}).")
+                    print(' AOD values in hour: ', aod_this_hour.values)
+                    raise ValueError("Mean AERONET AOD is negative, cannot proceed with inversion.")
+
             else:
                 print(' HMJB: tau_target is not a dataframe, using it directly as tau_target_1h')
                 # Just in case: treat tau_target as a simple array AOD
@@ -588,7 +613,8 @@ if __name__ == "__main__":
         [AERONET_2016, AERONET_2017],
         aod_wavelength_nm=1020
     )
-    
+    #raise ValueError("Stopping after loading AERONET AOD for testing.")
+
     print(f"[info] Loaded AERONET AOD rows: {len(df_aod)}")
     print(df_aod.head())
 
@@ -619,7 +645,7 @@ if __name__ == "__main__":
     ds_sonde_annual   = xr.load_dataset(ANNUAL_CLIMO) # change to file of the specific day of the inversion
  
     #zip_files = list_monthly_zip_files(BASE_CEILO)
-    zip_files = [BASE_CEILO + '/201706_EMBRAPA_CHM160147.nc.zip']
+    zip_files = [BASE_CEILO + '/201612_EMBRAPA_CHM160147.nc.zip']
 
     print("\n==============")
     print("[info] Found monthly zip files:", len(zip_files))
@@ -645,13 +671,13 @@ if __name__ == "__main__":
 
         # nneves: Loop over each daily netcdf inside the zip (limit to first 5 files), only 3 first hours of that day will be processed
         
-        #idx = 0
+        idx = 0
         for member_name, tmp_path in iter_netcdf_members_in_zip(ZIP_PATH):
             print("=====================================================================================================")
-        #    if idx >= 5:
-        #        break
-        #    else:
-        #        idx += 1
+            if idx >= 2:
+                break
+            else:
+                idx += 1
 
             ds_lidar = None
             # 26-AUG-2026 - WE SHOULD NOT NEED A TRY: TO DO THE LIDAR ANALYSIS.
@@ -680,12 +706,12 @@ if __name__ == "__main__":
             #         os.remove(tmp_path)
 
             # DEBUG STOP AFTER DAY 2
-            print("-------------------- DEBUG STOP AFTER DAY 2 ")
-            if member_name =="20170602_EMBRAPA_CHM160147_000.nc":
-                print("-------------------- EXIT AFTER DAY 2 ")
-                break
-            else:
-                print("--------------------     NOT JUN-2ND 2017    <<<<< =====================")
+            # print("-------------------- DEBUG STOP AFTER DAY 2 ")
+            # if member_name =="20161203_EMBRAPA_CHM160147_000.nc":
+            #     print("-------------------- EXIT AFTER DAY 2 ")
+            #     break
+            # else:
+            #     print("--------------------     NOT MAR-2ND 2017    <<<<< =====================")
 
         # After this zip: concat + save +  plot
         if len(monthly_outputs) == 0:
